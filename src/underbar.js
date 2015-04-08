@@ -444,6 +444,20 @@
   // Calls the method named by functionOrKey on each value in the list.
   // Note: You will need to learn a bit about .apply to complete this.
   _.invoke = function(collection, functionOrKey, args) {
+    //set new collection's data type based on input collection's type
+    var newCollection;
+    if(Array.isArray(collection) === true)
+      newCollection = [];
+    else
+      newCollection = {};
+
+    //call passed in function on each value in the input collection and put the resulting value into the new collection
+    //value[functionOrKey] uses the function's string name to get the function code from the objects's property, which allows the function to be called by string name
+    _.each(collection, function(value, key) {
+      newCollection[key] = (typeof(functionOrKey) === 'string') ? value[functionOrKey].apply(value, args) : functionOrKey.apply(value, args);
+    });
+
+     return newCollection;
   };
 
   // Sort the object's values by a criterion produced by an iterator.
@@ -451,6 +465,34 @@
   // of that string. For example, _.sortBy(people, 'name') should sort
   // an array of people by their name.
   _.sortBy = function(collection, iterator) {
+    //copy collection's contents into a new array
+    var newArray = _.map(collection, function (value) {
+      return value;
+    });
+
+    //the getValueToCompare function gets the keys to be compared in the sort comparison function
+    //if the passed in iterator is not a function, then the getValueToCompare becomes a new function that returns the value of iterator as a property
+    //if the passed in iterator is a function, then the getValueToCompare will be that function
+    var getValueToCompare;
+    if(typeof(iterator) !== "function")
+      getValueToCompare = function(value) {
+        return value[iterator];
+      };
+    else
+      getValueToCompare = iterator;
+
+    //use javascript's built in sorting function to sort the array
+    //the sorting comparison function is just a function that causes the sort to order things in descending order
+    //the keys that are compared are retrieved using the getValueToCompare function
+    newArray.sort(function(i, j) {
+      if(getValueToCompare(i) < getValueToCompare(j))
+        return -1;
+      if(getValueToCompare(j) < getValueToCompare(i))
+        return 1;
+      return 0;
+    });
+
+    return newArray;
   };
 
   // Zip together two or more arrays with elements of the same index
@@ -459,6 +501,27 @@
   // Example:
   // _.zip(['a','b','c','d'], [1,2,3]) returns [['a',1], ['b',2], ['c',3], ['d',undefined]]
   _.zip = function() {
+    if(arguments.length == 0)
+     return [];
+
+    //get the length of the longest array
+    var largestArrayLength = 0;
+    _.each(arguments, function(arg) {
+      if(arg.length > largestArrayLength)
+        largestArrayLength = arg.length;
+    });
+
+    //push the elements of each argument array at the current index into the new array at the current index until the largest array size is reached
+    var newArray = [];
+    for(var i = 0; i < largestArrayLength; ++i)
+    {
+      newArray[i] = [];
+      _.each(arguments, function(arg) {
+        newArray[i].push(arg[i]);
+      });      
+    }
+
+    return newArray;
   };
 
   // Takes a multidimensional array and converts it to a one-dimensional array.
@@ -466,16 +529,129 @@
   //
   // Hint: Use Array.isArray to check if something is an array
   _.flatten = function(nestedArray, result) {
+    if(arguments.length == 0)
+     return [];
+
+    var newArray = [];      
+
+    //helper recursive function that drills down into a nested array and pushes nonarray values into the new array
+    var recursiveFlattenHelper = function(value) {
+      //value is not an array, so just push it into the new array; this is the base case
+      if(Array.isArray(value) !== true)
+      {  
+        newArray.push(value);
+        return;
+      }
+
+      //value is an array, so loop through each element and pass the element into the recursive function
+      _.each(value, function(arrayElement) {
+        recursiveFlattenHelper(arrayElement);
+      }); 
+    }
+
+    //convert arguments into an array and pass it into the recursive helper function, which will flatten the arguments
+    recursiveFlattenHelper(Array.prototype.slice.call(arguments)); 
+
+    return newArray;
   };
 
   // Takes an arbitrary number of arrays and produces an array that contains
   // every item shared between all the passed-in arrays.
   _.intersection = function() {
-  };
+    if(arguments.length == 0)
+     return [];
+
+    //if an array has repeated elements, then counting all repeated elements from every array won't work
+    //need to ensure that elements from the same array are only counted once, so create a temp array to store unique-ified versions of the argument arrays
+    //also flatten the arrays to make it easier to count
+    var flattenedArray = [];
+    _.each(arguments, function(arg) {
+      flattenedArray.push(_.uniq(arg));
+    }); 
+    flattenedArray = _.flatten(flattenedArray);
+
+    //to differentiate between different data types (ie. int 1 vs string "1"), need to store them differently in the map
+    //this hash function creates separate keys for different data types
+    var hashFunction = function(value) {
+      var hashKey = value.toString() + ", " + typeof(value);
+      return hashKey;
+    };
+
+    //count all elements in the flattened array
+    //any repeated element is an element that is in more than one array, so that element will get pushed into the new array
+    //elements that have already been pushed into the new array won't be pushed into the new array again
+    var map = {};
+    var newArray = [];
+    var hashKey = "";
+    _.each(flattenedArray, function(value) {
+      hashKey = hashFunction(value); //hash key for the current element to use as key
+
+      if(map.hasOwnProperty(hashKey) === false)
+      {
+        map[hashKey] = [];
+        map[hashKey][0] = value; //the actual value to be pushed into the new array
+        map[hashKey][1] = 1; //the count
+      }
+      else if(map[hashKey][1] == 1)
+      {
+        newArray.push(map[hashKey][0]);
+        ++map[hashKey][1];
+      }
+    });
+
+    return newArray; 
+  }
 
   // Take the difference between one array and a number of other arrays.
   // Only the elements present in just the first array will remain.
   _.difference = function(array) {
+    if(arguments.length == 0)
+     return [];
+
+    //to differentiate between different data types (ie. int 1 vs string "1"), need to store them differently in the map
+    //this hash function creates separate keys for different data types
+    var hashFunction = function(value) {
+      var hashKey = value.toString() + ", " + typeof(value);
+      return hashKey;
+    };  
+
+    var hashKey = "";
+
+    //store each element of the first argument as a key into a map
+    //duplicate elements from the first argument will only get put once into the new array even if they aren't in any other array
+    var map = {};
+    _.each(arguments[0], function(value) {
+      hashKey = hashFunction(value); //hash key for the current element to use as key 
+
+      if(map.hasOwnProperty(hashKey) === false)
+      {
+        map[hashKey] = [];
+        map[hashKey][0] = value; //the actual value to be pushed into the new array
+        map[hashKey][1] = 1; //the count
+      }
+    });    
+
+    //increment count of elements in the map if they appear in arguments other than first 
+    var flattenedArray = _.flatten(Array.prototype.slice.call(arguments, 1)); //flatten arguments (except first) to make it easier to work with
+    _.each(flattenedArray, function(value) {
+      hashKey = hashFunction(value); //hash key for the current element to use as key 
+
+      if(map.hasOwnProperty(hashKey) === true)
+      {
+        ++map[hashKey][1];
+      }
+    });
+
+    //any elements that still have a count of one (meaning that they didn't appear in any other arguments) will be pushed into the new array
+    var newArray = [];
+    _.each(map, function(value) { //the value is an array that contains the actual element in the first argument as well as the count
+      if(value[1] === 1)
+      {
+        newArray.push(value[0]);
+      }
+    });  
+
+    return newArray;    
   };
 
   // Returns a function, that, when invoked, will only be triggered at most once
@@ -484,5 +660,25 @@
   //
   // Note: This is difficult! It may take a while to implement.
   _.throttle = function(func, wait) {
+    var block = false; //a flag that indicates whether the passed in function should be called or not
+    var result; //a variable that holds the most recently returned result from the execution of the passed in function
+
+    //this returned function will execute the passed in function and block future attempts to call it until the block flag is set back to false
+    //the block flag will be set back to false after the wait time finishes
+    //the function will return the most recently returned result from the execution of the passed in function even while block is true
+    return function() {
+      if(block !== true) //don't do anything if block is set to true
+      {
+        block = true; //prevent the function from getting called again
+        result = func.apply(this, arguments); //execute the function and update result variable
+
+        //run a function to unblock after the wait time finishes
+        setTimeout(function() { 
+          block = false; //allow the function to be called again
+        }, wait);
+      }
+
+      return result;
+    };
   };
 }());
