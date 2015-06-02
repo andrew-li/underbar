@@ -185,16 +185,20 @@
   //   }); // should be 5, regardless of the iterator function passed in
   //          No accumulator is given so the first element is used.
   _.reduce = function(collection, iterator, accumulator) {
-    var result = (accumulator === undefined) ? collection[0] : accumulator;
-
     _.each(collection, function(value, index) {
       //if the function is looking at the first element, then need to check if accumulator was passed in
       //apply the iterator function on the current element if the element is NOT the first element OR the accumulator was passed in (NOT undefined)
-      if(index !== 0 || accumulator !== undefined)
-        result = iterator(result, value);
+      if(index === 0 && accumulator === undefined)
+      {
+        accumulator = value;
+      }
+      else
+      {
+        accumulator = iterator(accumulator, value);
+      }
     });
 
-    return result;       
+    return accumulator;       
   };
 
   // Determine if the array or object contains a given value (using `===`).
@@ -318,24 +322,22 @@
   // instead if possible.
   _.memoize = function(func) {
     var alreadyCalled = {}; //instead of boolean value, have alreadyCalled be a map object
-    var result;
 
     // TIP: We'll return a new function that delegates to the old one, but only
     // if it hasn't been called before.
     return function() {
       //convert the function arguments to string format to use as a key for the map
-      var argumentString = Array.prototype.slice.call(arguments).toString();
+      var argumentString = JSON.stringify(Array.prototype.slice.call(arguments));
 
       //check to see if argument string is already in the map object
       //execute the function and set the property in the map object to true if it isn't there already
       if (!alreadyCalled.hasOwnProperty(argumentString)) {
         // TIP: .apply(this, arguments) is the standard way to pass on all of the
         // infromation from one function call to another.
-        result = func.apply(this, arguments);
-        alreadyCalled[argumentString] = true;
+        alreadyCalled[argumentString] = func.apply(this, arguments);
       }
       // The new function always returns the originally computed result.
-      return result;
+      return alreadyCalled[argumentString];
     };  
   };
 
@@ -465,10 +467,6 @@
   // of that string. For example, _.sortBy(people, 'name') should sort
   // an array of people by their name.
   _.sortBy = function(collection, iterator) {
-    //copy collection's contents into a new array
-    var newArray = _.map(collection, function (value) {
-      return value;
-    });
 
     //the getValueToCompare function gets the keys to be compared in the sort comparison function
     //if the passed in iterator is not a function, then the getValueToCompare becomes a new function that returns the value of iterator as a property
@@ -481,15 +479,76 @@
     else
       getValueToCompare = iterator;
 
+    //copy collection's contents into a new array that will be sorted using the built in sorting function
+    //the values of the initial collection need to be wrapped in objects that store the indices in order 
+    //to maintain stability with built in sort function
+    var itemObject;
+
+    var index = 0;
+    var arrayToSort = _.map(collection, function (item) {
+      itemObject = {};
+      itemObject["key"] = getValueToCompare(item);
+      itemObject["value"] = item;
+      itemObject["index"] = index;
+      ++index;
+      return itemObject;
+    });
+
+    //comparison function for sorting that first compares two objects' keys
+    //and then their indices in order to determine sort order  
+    var compare = function(i, j) {
+      //if the objects both have undefined values, then compare their indices
+      if(i["key"] === undefined && j["key"] === undefined)
+      {
+        if (i["index"] < j["index"]) {
+          return -1;
+        }
+        if (i["index"] > j["index"]) {
+          return 1;
+        }
+      }
+
+      //at this point, both objects' keys will not both be undefined
+      //but one object could still have an undefined value
+      //the object with the undefined value should go after the one without an undefined key
+      if(i["key"] === undefined && j["key"] !== undefined) {
+         return 1;
+      }
+      if(i["key"] !== undefined && j["key"] === undefined) {
+         return -1;
+      }
+
+      //at this point, neither of the objects' keys will be undefined
+      //so just compare their keys
+      if (i["key"] < j["key"]) {
+        return -1;
+      }
+      if (i["key"] > j["key"]) {
+        return 1;
+      }
+
+      //at this point, both of the objects' keys will be equal
+      //so compare their indices
+      if (i["index"] < j["index"]) {
+        return -1;
+      }
+      if (i["index"] > j["index"]) {
+        return 1;
+      }
+
+      //at this point, both objects will have equal keys and indices
+      return 0; 
+    };     
+
     //use javascript's built in sorting function to sort the array
     //the sorting comparison function is just a function that causes the sort to order things in descending order
     //the keys that are compared are retrieved using the getValueToCompare function
-    newArray.sort(function(i, j) {
-      if(getValueToCompare(i) < getValueToCompare(j))
-        return -1;
-      if(getValueToCompare(j) < getValueToCompare(i))
-        return 1;
-      return 0;
+    arrayToSort.sort(compare);
+
+    //copy values of sorted array into new array to return
+    var newArray = [];
+    _.each(arrayToSort, function(item) {
+      newArray.push(item["value"]);
     });
 
     return newArray;
@@ -501,7 +560,7 @@
   // Example:
   // _.zip(['a','b','c','d'], [1,2,3]) returns [['a',1], ['b',2], ['c',3], ['d',undefined]]
   _.zip = function() {
-    if(arguments.length == 0)
+    if(arguments.length === 0)
      return [];
 
     //get the length of the longest array
@@ -529,36 +588,30 @@
   //
   // Hint: Use Array.isArray to check if something is an array
   _.flatten = function(nestedArray, result) {
-    if(arguments.length == 0)
-     return [];
-
-    var newArray = [];      
-
-    //helper recursive function that drills down into a nested array and pushes nonarray values into the new array
-    var recursiveFlattenHelper = function(value) {
-      //value is not an array, so just push it into the new array; this is the base case
-      if(Array.isArray(value) !== true)
-      {  
-        newArray.push(value);
-        return;
-      }
-
-      //value is an array, so loop through each element and pass the element into the recursive function
-      _.each(value, function(arrayElement) {
-        recursiveFlattenHelper(arrayElement);
-      }); 
+    //set result to an empty array if it is undefined or null
+    if(result === undefined || result === null)
+      result = [];
+ 
+    //stop the recursion when the passed in value is not an array
+    //and push the value into the result array before returning it
+    if(Array.isArray(nestedArray) !== true)
+    {  
+      result.push(nestedArray);
+      return result;
     }
 
-    //convert arguments into an array and pass it into the recursive helper function, which will flatten the arguments
-    recursiveFlattenHelper(Array.prototype.slice.call(arguments)); 
+    //if the passed in value is an array, then recursively call the function for each element in the array
+    _.each(nestedArray, function(arrayElement) {
+      result = _.flatten(arrayElement, result);
+    });    
 
-    return newArray;
+    return result;
   };
 
   // Takes an arbitrary number of arrays and produces an array that contains
   // every item shared between all the passed-in arrays.
   _.intersection = function() {
-    if(arguments.length == 0)
+    if(arguments.length === 0)
      return [];
 
     //if an array has repeated elements, then counting all repeated elements from every array won't work
@@ -592,7 +645,7 @@
         map[hashKey][0] = value; //the actual value to be pushed into the new array
         map[hashKey][1] = 1; //the count
       }
-      else if(map[hashKey][1] == 1)
+      else if(map[hashKey][1] === 1)
       {
         newArray.push(map[hashKey][0]);
         ++map[hashKey][1];
@@ -605,7 +658,7 @@
   // Take the difference between one array and a number of other arrays.
   // Only the elements present in just the first array will remain.
   _.difference = function(array) {
-    if(arguments.length == 0)
+    if(arguments.length === 0)
      return [];
 
     //to differentiate between different data types (ie. int 1 vs string "1"), need to store them differently in the map
